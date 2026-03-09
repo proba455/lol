@@ -7,9 +7,9 @@ header('Content-Type: application/json; charset=utf-8');
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-require __DIR__ . '/src/Exception.php';
-require __DIR__ . '/src/PHPMailer.php';
-require __DIR__ . '/src/SMTP.php';
+require __DIR__ . '/srce/Exception.php';
+require __DIR__ . '/srce/PHPMailer.php';
+require __DIR__ . '/srce/SMTP.php';
 
 // Настройки SMTP (ЗАПОЛНИ СВОИМИ ДАННЫМИ)
 const SMTP_HOST       = 'smtp.gmail.com';
@@ -107,5 +107,6 @@ try {
     echo json_encode(['ok' => false, 'error' => 'mail_exception', 'code' => $code, 'detail' => $e->getMessage()]);
     exit;
 }
+
 
 echo json_encode(['ok' => true, 'code' => $code]);
