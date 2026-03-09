@@ -7,9 +7,9 @@ header('Content-Type: application/json; charset=utf-8');
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-require __DIR__ . '/src/Exception.php';
-require __DIR__ . '/src/PHPMailer.php';
-require __DIR__ . '/src/SMTP.php';
+require __DIR__ . '/Exception.php';
+require __DIR__ . '/PHPMailer.php';
+require __DIR__ . '/SMTP.php';
 
 // Настройки SMTP (ЗАПОЛНИ СВОИМИ ДАННЫМИ)
 const SMTP_HOST       = 'smtp.gmail.com';
