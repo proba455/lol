@@ -14,8 +14,8 @@ require __DIR__ . '/SMTP.php';
 // Настройки SMTP (ЗАПОЛНИ СВОИМИ ДАННЫМИ)
 const SMTP_HOST       = 'smtp.gmail.com';
 const SMTP_PORT       = 587;
-const SMTP_USERNAME   = 'shubkagames@gmail.com';   // сюда свой Gmail
-const SMTP_PASSWORD   = 'Yfipy ygbk lmvt yyoh';              // сюда app‑password от Gmail
+const SMTP_USERNAME   = 'shubkagames@gmail.com';
+const SMTP_PASSWORD   = 'Yfipy ygbk lmvt yyoh';
 const SMTP_FROM_EMAIL = SMTP_USERNAME;
 const SMTP_FROM_NAME  = 'Nexules';
 
@@ -82,16 +82,24 @@ $mail = new PHPMailer(true);
 
 try {
     $mail->isSMTP();
-    $mail->Host       = SMTP_HOST;
+    $host = getenv('SMTP_HOST') ?: SMTP_HOST;
+    $port = (int) (getenv('SMTP_PORT') ?: SMTP_PORT);
+    $username = getenv('SMTP_USERNAME') ?: SMTP_USERNAME;
+    $password = preg_replace('/\s+/', '', (getenv('SMTP_PASSWORD') ?: SMTP_PASSWORD));
+    $fromEmail = getenv('SMTP_FROM_EMAIL') ?: SMTP_FROM_EMAIL;
+    $fromName  = getenv('SMTP_FROM_NAME')  ?: SMTP_FROM_NAME;
+    $secure    = strtolower(getenv('SMTP_SECURE') ?: ($port === 465 ? 'ssl' : 'tls'));
+
+    $mail->Host       = $host;
     $mail->SMTPAuth   = true;
-    $mail->Username   = SMTP_USERNAME;
-    $mail->Password   = str_replace(' ', '', SMTP_PASSWORD);
-    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-    $mail->Port       = SMTP_PORT;
+    $mail->Username   = $username;
+    $mail->Password   = $password;
+    $mail->SMTPSecure = $secure === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
+    $mail->Port       = $port;
 
     $mail->CharSet = 'UTF-8';
 
-    $mail->setFrom(SMTP_FROM_EMAIL, SMTP_FROM_NAME);
+    $mail->setFrom($fromEmail, $fromName);
     $mail->addAddress($email);
 
     $mail->Subject = $subject;
