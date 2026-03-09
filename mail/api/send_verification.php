@@ -15,8 +15,8 @@ require __DIR__ . '/SMTP.php';
 const SMTP_HOST       = 'smtp.gmail.com';
 const SMTP_PORT       = 587;
 const SMTP_USERNAME   = 'shubkagames@gmail.com';
-const SMTP_PASSWORD   = 'Yfipy ygbk lmvt yyoh';
-const SMTP_FROM_EMAIL = SMTP_USERNAME;
+const SMTP_PASSWORD   = 'Yfipyygbklmvtyyoh';
+const SMTP_FROM_EMAIL = shubkagames@gmail.com;
 const SMTP_FROM_NAME  = 'Nexules';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -117,3 +117,4 @@ try {
 }
 
 echo json_encode(['ok' => true, 'code' => $code]);
+
