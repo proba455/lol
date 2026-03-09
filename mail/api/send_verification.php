@@ -78,43 +78,55 @@ $subject = 'Подтверждение почты Nexules';
 $message = "Ваш код подтверждения: {$code}\n\n"
          . "Если вы не регистрировались в игре Nexules, просто проигнорируйте это письмо.";
 
-$mail = new PHPMailer(true);
+$host = getenv('SMTP_HOST') ?: SMTP_HOST;
+$portEnv = getenv('SMTP_PORT');
+$port = (int) ($portEnv ?: SMTP_PORT);
+$username = getenv('SMTP_USERNAME') ?: SMTP_USERNAME;
+$password = preg_replace('/\s+/', '', (getenv('SMTP_PASSWORD') ?: SMTP_PASSWORD));
+$fromEmail = getenv('SMTP_FROM_EMAIL') ?: SMTP_FROM_EMAIL;
+$fromName  = getenv('SMTP_FROM_NAME')  ?: SMTP_FROM_NAME;
+$secureEnv = strtolower((string) getenv('SMTP_SECURE'));
 
-try {
-    $mail->isSMTP();
-    $host = getenv('SMTP_HOST') ?: SMTP_HOST;
-    $port = (int) (getenv('SMTP_PORT') ?: SMTP_PORT);
-    $username = getenv('SMTP_USERNAME') ?: SMTP_USERNAME;
-    $password = preg_replace('/\s+/', '', (getenv('SMTP_PASSWORD') ?: SMTP_PASSWORD));
-    $fromEmail = getenv('SMTP_FROM_EMAIL') ?: SMTP_FROM_EMAIL;
-    $fromName  = getenv('SMTP_FROM_NAME')  ?: SMTP_FROM_NAME;
-    $secure    = strtolower(getenv('SMTP_SECURE') ?: ($port === 465 ? 'ssl' : 'tls'));
-
-    $mail->Host       = $host;
-    $mail->SMTPAuth   = true;
-    $mail->Username   = $username;
-    $mail->Password   = $password;
-    $mail->SMTPSecure = $secure === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
-    $mail->Port       = $port;
-
-    $mail->CharSet = 'UTF-8';
-
-    $mail->setFrom($fromEmail, $fromName);
-    $mail->addAddress($email);
-
-    $mail->Subject = $subject;
-    $mail->Body    = $message;
-
-    if (!$mail->send()) {
-        http_response_code(500);
-        echo json_encode(['ok' => false, 'error' => 'mail_failed', 'code' => $code, 'detail' => $mail->ErrorInfo]);
-        exit;
-    }
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode(['ok' => false, 'error' => 'mail_exception', 'code' => $code, 'detail' => $e->getMessage()]);
-    exit;
+$attempts = [];
+if ($secureEnv !== '') {
+    $attempts[] = ['host' => $host, 'port' => $port, 'secure' => $secureEnv];
+} elseif ($portEnv !== false && $portEnv !== '') {
+    $attempts[] = ['host' => $host, 'port' => $port, 'secure' => ($port === 465 ? 'ssl' : 'tls')];
+} else {
+    $attempts[] = ['host' => $host, 'port' => 465, 'secure' => 'ssl'];
+    $attempts[] = ['host' => $host, 'port' => 587, 'secure' => 'tls'];
 }
 
+$lastError = '';
+foreach ($attempts as $attempt) {
+    try {
+        $mail = new PHPMailer(true);
+        $mail->isSMTP();
+        $mail->Host       = $attempt['host'];
+        $mail->SMTPAuth   = true;
+        $mail->Username   = $username;
+        $mail->Password   = $password;
+        $mail->SMTPSecure = $attempt['secure'] === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port       = $attempt['port'];
+        $mail->CharSet = 'UTF-8';
+        $mail->setFrom($fromEmail, $fromName);
+        $mail->addAddress($email);
+        $mail->Subject = $subject;
+        $mail->Body    = $message;
+        if ($mail->send()) {
+            echo json_encode(['ok' => true, 'code' => $code]);
+            exit;
+        }
+        $lastError = $mail->ErrorInfo;
+    } catch (Exception $e) {
+        $lastError = $e->getMessage();
+    }
+}
+
+http_response_code(500);
+echo json_encode(['ok' => false, 'error' => 'mail_exception', 'code' => $code, 'detail' => $lastError]);
+exit;
+
 echo json_encode(['ok' => true, 'code' => $code]);
+
 
