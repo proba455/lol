@@ -3,6 +3,43 @@
 
 header('Content-Type: application/json; charset=utf-8');
 
+ob_start();
+$__response_sent = false;
+function __send_json($payload, $code = 200)
+{
+    global $__response_sent;
+    if ($__response_sent) {
+        return;
+    }
+    if (!headers_sent()) {
+        http_response_code($code);
+        header('Content-Type: application/json; charset=utf-8');
+    }
+    echo json_encode($payload);
+    $__response_sent = true;
+}
+set_error_handler(function ($severity, $message, $file, $line) {
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+set_exception_handler(function ($e) {
+    __send_json(['ok' => false, 'error' => 'server_exception', 'detail' => $e->getMessage()], 500);
+});
+register_shutdown_function(function () {
+    $error = error_get_last();
+    if ($error && !$GLOBALS['__response_sent']) {
+        __send_json(['ok' => false, 'error' => 'server_fatal', 'detail' => $error['message']], 500);
+    }
+    $output = ob_get_clean();
+    if ($GLOBALS['__response_sent']) {
+        echo $output;
+        return;
+    }
+    $trimmed = trim($output);
+    if ($trimmed !== '') {
+        __send_json(['ok' => false, 'error' => 'server_output', 'detail' => substr($trimmed, 0, 200)], 500);
+    }
+});
+
 // Подключаем PHPMailer (нужно загрузить библиотеку в папку PHPMailer рядом с этим файлом)
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -16,7 +53,7 @@ const SMTP_HOST       = 'smtp.gmail.com';
 const SMTP_PORT       = 587;
 const SMTP_USERNAME   = 'shubkagames@gmail.com';
 const SMTP_PASSWORD   = 'Yfipyygbklmvtyyoh';
-const SMTP_FROM_EMAIL = shubkagames@gmail.com;
+const SMTP_FROM_EMAIL = SMTP_USERNAME;
 const SMTP_FROM_NAME  = 'Nexules';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -123,10 +160,8 @@ foreach ($attempts as $attempt) {
     }
 }
 
-http_response_code(500);
-echo json_encode(['ok' => false, 'error' => 'mail_exception', 'code' => $code, 'detail' => $lastError]);
+__send_json(['ok' => false, 'error' => 'mail_exception', 'code' => $code, 'detail' => $lastError], 500);
 exit;
 
-echo json_encode(['ok' => true, 'code' => $code]);
 
 
