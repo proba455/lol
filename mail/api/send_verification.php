@@ -19,9 +19,9 @@ function send_json($payload, $code = 200)
 const SMTP_HOST       = 'smtp.gmail.com';
 const SMTP_PORT       = 587;
 const SMTP_USERNAME   = 'shubkagames@gmail.com';
-const SMTP_PASSWORD   = 'nehkeziblgserc';
+const SMTP_PASSWORD   = 'ancd snwg gmaj ozf';
 const SMTP_FROM_EMAIL = 'shubkagames@gmail.com';
-const SMTP_FROM_NAME  = 'nexules';
+const SMTP_FROM_NAME  = 'Games';
 
 set_error_handler(function ($severity, $message, $file, $line) {
     throw new ErrorException($message, 0, $severity, $file, $line);
@@ -145,4 +145,5 @@ exit;
     send_json(['ok' => false, 'error' => 'server_exception', 'detail' => $e->getMessage()], 500);
     exit;
 }
+
 
