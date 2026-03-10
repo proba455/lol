@@ -3,42 +3,14 @@
 
 header('Content-Type: application/json; charset=utf-8');
 
-ob_start();
-$__response_sent = false;
-function __send_json($payload, $code = 200)
+function send_json($payload, $code = 200)
 {
-    global $__response_sent;
-    if ($__response_sent) {
-        return;
-    }
     if (!headers_sent()) {
         http_response_code($code);
         header('Content-Type: application/json; charset=utf-8');
     }
     echo json_encode($payload);
-    $__response_sent = true;
 }
-set_error_handler(function ($severity, $message, $file, $line) {
-    throw new ErrorException($message, 0, $severity, $file, $line);
-});
-set_exception_handler(function ($e) {
-    __send_json(['ok' => false, 'error' => 'server_exception', 'detail' => $e->getMessage()], 500);
-});
-register_shutdown_function(function () {
-    $error = error_get_last();
-    if ($error && !$GLOBALS['__response_sent']) {
-        __send_json(['ok' => false, 'error' => 'server_fatal', 'detail' => $error['message']], 500);
-    }
-    $output = ob_get_clean();
-    if ($GLOBALS['__response_sent']) {
-        echo $output;
-        return;
-    }
-    $trimmed = trim($output);
-    if ($trimmed !== '') {
-        __send_json(['ok' => false, 'error' => 'server_output', 'detail' => substr($trimmed, 0, 200)], 500);
-    }
-});
 
 // Подключаем PHPMailer (нужно загрузить библиотеку в папку PHPMailer рядом с этим файлом)
 use PHPMailer\PHPMailer\PHPMailer;
@@ -52,13 +24,18 @@ require __DIR__ . '/SMTP.php';
 const SMTP_HOST       = 'smtp.gmail.com';
 const SMTP_PORT       = 587;
 const SMTP_USERNAME   = 'shubkagames@gmail.com';
-const SMTP_PASSWORD   = 'nehk ezib lgse rcpf';
-const SMTP_FROM_EMAIL = shubkagames@gmail.com;
+const SMTP_PASSWORD   = 'nehk ezib lgse rc';
+const SMTP_FROM_EMAIL = SMTP_USERNAME;
 const SMTP_FROM_NAME  = 'nexules';
 
+set_error_handler(function ($severity, $message, $file, $line) {
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
+try {
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['ok' => false, 'error' => 'method_not_allowed']);
+    send_json(['ok' => false, 'error' => 'method_not_allowed'], 405);
     exit;
 }
 
@@ -67,13 +44,11 @@ $uid      = isset($_POST['uid']) ? trim($_POST['uid']) : '';
 $id_token = isset($_POST['id_token']) ? trim($_POST['id_token']) : '';
 
 if (!$email) {
-    http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => 'bad_email']);
+    send_json(['ok' => false, 'error' => 'bad_email'], 400);
     exit;
 }
 if ($uid === '' || $id_token === '') {
-    http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => 'missing_uid_or_token']);
+    send_json(['ok' => false, 'error' => 'missing_uid_or_token'], 400);
     exit;
 }
 
@@ -98,13 +73,12 @@ $firebaseCode     = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 curl_close($ch);
 
 if ($firebaseCode !== 200) {
-    http_response_code(500);
-    echo json_encode([
+    send_json([
         'ok'    => false,
         'error' => 'firebase_error',
         'code'  => $firebaseCode,
         'body'  => $firebaseResponse,
-    ]);
+    ], 500);
     exit;
 }
 
@@ -151,7 +125,7 @@ foreach ($attempts as $attempt) {
         $mail->Subject = $subject;
         $mail->Body    = $message;
         if ($mail->send()) {
-            echo json_encode(['ok' => true, 'code' => $code]);
+            send_json(['ok' => true, 'code' => $code]);
             exit;
         }
         $lastError = $mail->ErrorInfo;
@@ -160,9 +134,9 @@ foreach ($attempts as $attempt) {
     }
 }
 
-__send_json(['ok' => false, 'error' => 'mail_exception', 'code' => $code, 'detail' => $lastError], 500);
+send_json(['ok' => false, 'error' => 'mail_exception', 'code' => $code, 'detail' => $lastError], 500);
 exit;
-
-
-
-
+} catch (Throwable $e) {
+    send_json(['ok' => false, 'error' => 'server_exception', 'detail' => $e->getMessage()], 500);
+    exit;
+}
