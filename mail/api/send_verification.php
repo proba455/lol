@@ -19,7 +19,7 @@ function send_json($payload, $code = 200)
 const SMTP_HOST       = 'smtp.gmail.com';
 const SMTP_PORT       = 587;
 const SMTP_USERNAME   = 'shubkagames@gmail.com';
-const SMTP_PASSWORD   = 'nehk ezib lgse rc';
+const SMTP_PASSWORD   = 'nehkeziblgserc';
 const SMTP_FROM_EMAIL = 'shubkagames@gmail.com';
 const SMTP_FROM_NAME  = 'nexules';
 
@@ -145,3 +145,4 @@ exit;
     send_json(['ok' => false, 'error' => 'server_exception', 'detail' => $e->getMessage()], 500);
     exit;
 }
+
