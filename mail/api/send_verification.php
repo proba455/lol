@@ -52,9 +52,9 @@ require __DIR__ . '/SMTP.php';
 const SMTP_HOST       = 'smtp.gmail.com';
 const SMTP_PORT       = 587;
 const SMTP_USERNAME   = 'shubkagames@gmail.com';
-const SMTP_PASSWORD   = 'Yfipyygbklmvtyyoh';
-const SMTP_FROM_EMAIL = SMTP_USERNAME;
-const SMTP_FROM_NAME  = 'Nexules';
+const SMTP_PASSWORD   = 'nehk ezib lgse rcpf';
+const SMTP_FROM_EMAIL = shubkagames@gmail.com;
+const SMTP_FROM_NAME  = 'nexules';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -162,6 +162,7 @@ foreach ($attempts as $attempt) {
 
 __send_json(['ok' => false, 'error' => 'mail_exception', 'code' => $code, 'detail' => $lastError], 500);
 exit;
+
 
 
 
