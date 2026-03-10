@@ -1,6 +1,9 @@
 <?php
 // send_verification.php
 
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
 header('Content-Type: application/json; charset=utf-8');
 
 function send_json($payload, $code = 200)
@@ -12,25 +15,27 @@ function send_json($payload, $code = 200)
     echo json_encode($payload);
 }
 
-// Подключаем PHPMailer (нужно загрузить библиотеку в папку PHPMailer рядом с этим файлом)
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
-
-require __DIR__ . '/Exception.php';
-require __DIR__ . '/PHPMailer.php';
-require __DIR__ . '/SMTP.php';
-
 // Настройки SMTP (ЗАПОЛНИ СВОИМИ ДАННЫМИ)
 const SMTP_HOST       = 'smtp.gmail.com';
 const SMTP_PORT       = 587;
 const SMTP_USERNAME   = 'shubkagames@gmail.com';
 const SMTP_PASSWORD   = 'nehk ezib lgse rc';
-const SMTP_FROM_EMAIL = shubkagames@gmail.com;
+const SMTP_FROM_EMAIL = 'shubkagames@gmail.com';
 const SMTP_FROM_NAME  = 'nexules';
 
 set_error_handler(function ($severity, $message, $file, $line) {
     throw new ErrorException($message, 0, $severity, $file, $line);
 });
+register_shutdown_function(function () {
+    $error = error_get_last();
+    if ($error) {
+        send_json(['ok' => false, 'error' => 'server_fatal', 'detail' => $error['message']], 500);
+    }
+});
+
+require __DIR__ . '/Exception.php';
+require __DIR__ . '/PHPMailer.php';
+require __DIR__ . '/SMTP.php';
 
 try {
 
@@ -140,4 +145,3 @@ exit;
     send_json(['ok' => false, 'error' => 'server_exception', 'detail' => $e->getMessage()], 500);
     exit;
 }
-
