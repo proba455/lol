@@ -16,6 +16,35 @@ function send_json($payload, $code = 200) {
     exit;
 }
 
+function send_error($message, $error, $http = 400) {
+    send_json([
+        'ok' => false,
+        'success' => false,
+        'message' => $message,
+        'error' => $error
+    ], $http);
+}
+
+function send_success($message, $extra = []) {
+    $base = [
+        'ok' => true,
+        'success' => true,
+        'message' => $message
+    ];
+    send_json(array_merge($base, $extra), 200);
+}
+
+function get_input_data() {
+    $raw = file_get_contents('php://input');
+    if ($raw) {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+    }
+    return $_POST;
+}
+
 // Настройки SMTP (используем твои данные от Gmail)
 const SMTP_HOST       = 'smtp.gmail.com';
 const SMTP_PORT       = 587;
@@ -33,30 +62,142 @@ if (file_exists(__DIR__ . '/vendor/autoload.php')) {
     require __DIR__ . '/SMTP.php';
 }
 
-try {
-    // Получаем данные
-    $email = filter_input(INPUT_POST, 'email', FILTER_VALIDATE_EMAIL);
-    $uid = isset($_POST['uid']) ? trim($_POST['uid']) : '';
-    $id_token = isset($_POST['id_token']) ? trim($_POST['id_token']) : '';
+// ===== Helpers for Firebase Admin access (no user login required) =====
+function get_service_account() {
+    $json = getenv('FIREBASE_SERVICE_ACCOUNT_JSON');
+    if ($json) {
+        return json_decode($json, true);
+    }
+    $path = getenv('FIREBASE_SERVICE_ACCOUNT_PATH');
+    if ($path && file_exists($path)) {
+        return json_decode(file_get_contents($path), true);
+    }
+    return null;
+}
 
-    if (!$email || !$uid || !$id_token) {
-        send_json(['ok' => false, 'error' => 'invalid_params'], 400);
+function get_access_token($sa) {
+    $header = base64_encode(json_encode(['alg' => 'RS256', 'typ' => 'JWT']));
+    $now = time();
+    $payload = [
+        'iss' => $sa['client_email'],
+        'scope' => 'https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/firebase.database',
+        'aud' => 'https://oauth2.googleapis.com/token',
+        'iat' => $now,
+        'exp' => $now + 3600
+    ];
+    $payloadEnc = base64_encode(json_encode($payload));
+    $jwtUnsigned = $header . '.' . $payloadEnc;
+    $signature = '';
+    openssl_sign($jwtUnsigned, $signature, $sa['private_key'], 'sha256');
+    $jwt = $jwtUnsigned . '.' . rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
+
+    $ch = curl_init('https://oauth2.googleapis.com/token');
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => http_build_query([
+            'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+            'assertion' => $jwt
+        ]),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 20
+    ]);
+    $resp = curl_exec($ch);
+    curl_close($ch);
+    $data = json_decode($resp, true);
+    return $data['access_token'] ?? null;
+}
+
+function firebase_lookup_uid_by_email($projectId, $token, $email) {
+    $url = "https://identitytoolkit.googleapis.com/v1/projects/{$projectId}/accounts:lookup";
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $token, 'Content-Type: application/json'],
+        CURLOPT_POSTFIELDS => json_encode(['email' => [$email]]),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 20
+    ]);
+    $resp = curl_exec($ch);
+    curl_close($ch);
+    $data = json_decode($resp, true);
+    if (isset($data['users'][0]['localId'])) return $data['users'][0]['localId'];
+    return null;
+}
+
+function firebase_db_put($dbName, $path, $token, $payload) {
+    $url = "https://{$dbName}.firebaseio.com/{$path}.json?access_token={$token}";
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST => 'PUT',
+        CURLOPT_POSTFIELDS => json_encode($payload),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 20
+    ]);
+    $resp = curl_exec($ch);
+    curl_close($ch);
+    return $resp;
+}
+
+function firebase_set_temp_password($projectId, $token, $uid, $password) {
+    $url = "https://identitytoolkit.googleapis.com/v1/projects/{$projectId}/accounts:update";
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $token, 'Content-Type: application/json'],
+        CURLOPT_POSTFIELDS => json_encode([
+            'localId' => $uid,
+            'password' => strval($password)
+        ]),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 20
+    ]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return $code === 200;
+}
+
+try {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        send_error('Метод не поддерживается. Используйте POST.', 'method_not_allowed', 405);
+    }
+
+    $input = get_input_data();
+    $rawEmail = isset($input['email']) ? trim($input['email']) : '';
+    $email = filter_var($rawEmail, FILTER_VALIDATE_EMAIL);
+
+    if (!$email) {
+        send_error('Некорректный email.', 'invalid_params_email', 400);
+    }
+
+    $sa = get_service_account();
+    if (!$sa) {
+        send_error('Не найден сервисный аккаунт Firebase.', 'service_account_missing', 500);
+    }
+    $accessToken = get_access_token($sa);
+    if (!$accessToken) {
+        send_error('Не удалось получить access token.', 'access_token_failed', 500);
+    }
+    $projectId = $sa['project_id'] ?? 'nexules-3ba83';
+    $dbName = $projectId . '-default-rtdb';
+
+    // Находим uid по email с правами сервера
+    $uid = firebase_lookup_uid_by_email($projectId, $accessToken, $email);
+    if (!$uid) {
+        send_error('Пользователь с таким email не найден.', 'user_not_found', 404);
     }
 
     // Генерируем код
     $code = random_int(100000, 999999);
     
-    // Firebase — сохраняем код в ветке password_reset (отдельно от email_verification)
-    $firebaseData = json_encode(['code' => $code, 'created_at' => time()]);
-    $ch = curl_init("https://nexules-3ba83-default-rtdb.firebaseio.com/password_reset/{$uid}.json?auth={$id_token}");
-    curl_setopt_array($ch, [
-        CURLOPT_CUSTOMREQUEST => 'PUT',
-        CURLOPT_POSTFIELDS => $firebaseData,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 10
-    ]);
-    curl_exec($ch);
-    curl_close($ch);
+    // Сохраняем код в RTDB с правами сервера
+    firebase_db_put($dbName, "password_reset/{$uid}", $accessToken, ['code' => $code, 'created_at' => time()]);
+
+    // Делаем код временным паролем (админ-права)
+    $ok = firebase_set_temp_password($projectId, $accessToken, $uid, $code);
+    if (!$ok) {
+        send_error('Не удалось установить временный пароль.', 'update_password_failed', 500);
+    }
 
     // Красивое HTML-письмо для сброса пароля
     $htmlBody = <<<HTML
@@ -204,9 +345,9 @@ HTML;
 
     $mail->send();
     
-    send_json(['ok' => true, 'code' => $code]);
+    send_success('Письмо с кодом отправлено.', ['code' => $code]);
 
 } catch (Exception $e) {
-    send_json(['ok' => false, 'error' => 'mail_failed'], 500);
+    send_error('Ошибка отправки письма.', 'mail_failed', 500);
 }
 ?>
