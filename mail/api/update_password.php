@@ -94,24 +94,41 @@ function firebase_lookup_uid_by_email($projectId, $token, $email) {
     return null;
 }
 
+function get_db_base_url($dbName) {
+    $fromEnv = getenv('FIREBASE_DB_URL');
+    if ($fromEnv) return rtrim($fromEnv, '/');
+    return "https://{$dbName}.firebaseio.com";
+}
+
 function firebase_db_get($dbName, $path, $token) {
-    $url = "https://{$dbName}.firebaseio.com/{$path}.json?access_token={$token}";
+    $url = get_db_base_url($dbName) . "/{$path}.json?access_token={$token}";
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 3,
         CURLOPT_TIMEOUT => 20
     ]);
     $resp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-    return json_decode($resp, true);
+    if ($resp === false) return ['__error' => 'curl_failed'];
+    if ($httpCode < 200 || $httpCode >= 300) return ['__error' => 'http_' . $httpCode];
+    $trimmed = trim($resp);
+    if ($trimmed === '' || $trimmed === 'null') return null;
+    $decoded = json_decode($resp, true);
+    if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) return ['__error' => 'json_parse_failed'];
+    return $decoded;
 }
 
 function firebase_db_delete($dbName, $path, $token) {
-    $url = "https://{$dbName}.firebaseio.com/{$path}.json?access_token={$token}";
+    $url = get_db_base_url($dbName) . "/{$path}.json?access_token={$token}";
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_CUSTOMREQUEST => 'DELETE',
         CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 3,
         CURLOPT_TIMEOUT => 20
     ]);
     $resp = curl_exec($ch);
@@ -160,6 +177,7 @@ $uid = firebase_lookup_uid_by_email($projectId, $token, $email);
 if (!$uid) send_error('Пользователь с таким email не найден.', 'user_not_found', 404);
 
 $data = firebase_db_get($dbName, "password_reset/{$uid}", $token);
+if (is_array($data) && isset($data['__error'])) send_error('Ошибка чтения кода из базы.', 'db_read_failed', 500);
 if (!isset($data['code'])) send_error('Код не найден.', 'code_not_found', 404);
 if (intval($data['code']) !== intval($code)) send_error('Неверный код.', 'code_mismatch', 400);
 if (isset($data['created_at']) && time() - intval($data['created_at']) > 600) send_error('Срок действия кода истёк.', 'code_expired', 400);
