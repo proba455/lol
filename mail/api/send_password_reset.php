@@ -80,7 +80,7 @@ function get_access_token($sa) {
     $now = time();
     $payload = [
         'iss' => $sa['client_email'],
-        'scope' => 'https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/firebase.database',
+        'scope' => 'https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email',
         'aud' => 'https://oauth2.googleapis.com/token',
         'iat' => $now,
         'exp' => $now + 3600
@@ -235,7 +235,9 @@ try {
             'http_code' => $saved['http_code'],
             'db_url' => $saved['url'],
             'curl_error' => $saved['error'],
-            'body' => $saved['body']
+            'body' => $saved['body'],
+            'service_project_id' => $projectId,
+            'service_account_email' => $sa['client_email'] ?? ''
         ], 500);
     }
 
