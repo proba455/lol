@@ -94,31 +94,49 @@ function firebase_lookup_uid_by_email($projectId, $token, $email) {
     return null;
 }
 
-function get_db_base_url($dbName) {
+function get_db_base_urls($dbName, $projectId) {
+    $urls = [];
     $fromEnv = getenv('FIREBASE_DB_URL');
-    if ($fromEnv) return rtrim($fromEnv, '/');
-    return "https://{$dbName}.firebaseio.com";
+    if ($fromEnv) $urls[] = rtrim($fromEnv, '/');
+    $urls[] = "https://{$dbName}.firebaseio.com";
+    $urls[] = "https://{$dbName}.firebasedatabase.app";
+    $urls[] = "https://{$projectId}-default-rtdb.firebaseio.com";
+    $urls[] = "https://{$projectId}-default-rtdb.firebasedatabase.app";
+    return array_values(array_unique($urls));
 }
 
-function firebase_db_get($dbName, $path, $token) {
-    $url = get_db_base_url($dbName) . "/{$path}.json?access_token={$token}";
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_MAXREDIRS => 3,
-        CURLOPT_TIMEOUT => 20
-    ]);
-    $resp = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    if ($resp === false) return ['__error' => 'curl_failed'];
-    if ($httpCode < 200 || $httpCode >= 300) return ['__error' => 'http_' . $httpCode];
-    $trimmed = trim($resp);
-    if ($trimmed === '' || $trimmed === 'null') return null;
-    $decoded = json_decode($resp, true);
-    if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) return ['__error' => 'json_parse_failed'];
-    return $decoded;
+function firebase_db_get($dbName, $projectId, $path, $token) {
+    $last = ['__error' => 'unknown', '__http' => 0, '__url' => '', '__curl_error' => '', '__body' => ''];
+    $urls = get_db_base_urls($dbName, $projectId);
+    foreach ($urls as $baseUrl) {
+        $url = $baseUrl . "/{$path}.json?access_token={$token}";
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 3,
+            CURLOPT_TIMEOUT => 20
+        ]);
+        $resp = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+        if ($resp === false) {
+            $last = ['__error' => 'curl_failed', '__http' => $httpCode, '__url' => $url, '__curl_error' => $err, '__body' => ''];
+            continue;
+        }
+        if ($httpCode >= 200 && $httpCode < 300) {
+            $trimmed = trim($resp);
+            if ($trimmed === '' || $trimmed === 'null') return null;
+            $decoded = json_decode($resp, true);
+            if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) {
+                return ['__error' => 'json_parse_failed', '__http' => $httpCode, '__url' => $url, '__curl_error' => '', '__body' => $resp];
+            }
+            return $decoded;
+        }
+        $last = ['__error' => 'http_' . $httpCode, '__http' => $httpCode, '__url' => $url, '__curl_error' => $err, '__body' => $resp];
+    }
+    return $last;
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -141,8 +159,21 @@ $dbName = $projectId . '-default-rtdb';
 $uid = firebase_lookup_uid_by_email($projectId, $token, $email);
 if (!$uid) send_error('Пользователь с таким email не найден.', 'user_not_found', 404);
 
-$data = firebase_db_get($dbName, "password_reset/{$uid}", $token);
-if (is_array($data) && isset($data['__error'])) send_error('Ошибка чтения кода из базы.', 'db_read_failed', 500);
+$data = firebase_db_get($dbName, $projectId, "password_reset/{$uid}", $token);
+if (is_array($data) && isset($data['__error'])) {
+    send_json([
+        'ok' => false,
+        'success' => false,
+        'message' => 'Ошибка чтения кода из базы.',
+        'error' => 'db_read_failed',
+        'details' => [
+            'db_url' => $data['__url'] ?? '',
+            'http_code' => $data['__http'] ?? 0,
+            'curl_error' => $data['__curl_error'] ?? '',
+            'body' => $data['__body'] ?? ''
+        ]
+    ], 500);
+}
 if (!isset($data['code'])) send_error('Код не найден.', 'code_not_found', 404);
 if (intval($data['code']) !== intval($code)) send_error('Неверный код.', 'code_mismatch', 400);
 // TTL 10 минут
@@ -152,4 +183,3 @@ if (isset($data['created_at']) && time() - intval($data['created_at']) > 600) {
 
 send_success('Код подтверждён.');
 ?>
-
