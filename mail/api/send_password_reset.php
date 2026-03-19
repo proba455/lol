@@ -125,15 +125,20 @@ function firebase_lookup_uid_by_email($projectId, $token, $email) {
 }
 
 function get_db_base_urls($dbName, $projectId) {
-    $urls = [];
     $fromEnv = getenv('FIREBASE_DB_URL');
     if ($fromEnv) {
-        $urls[] = rtrim($fromEnv, '/');
+        return [rtrim($fromEnv, '/')];
     }
+    $instance = getenv('FIREBASE_DB_INSTANCE');
+    if ($instance) {
+        return [
+            "https://{$instance}.firebaseio.com",
+            "https://{$instance}.firebasedatabase.app"
+        ];
+    }
+    $urls = [];
     $urls[] = "https://{$dbName}.firebaseio.com";
-    $urls[] = "https://{$dbName}.firebasedatabase.app";
     $urls[] = "https://{$projectId}-default-rtdb.firebaseio.com";
-    $urls[] = "https://{$projectId}-default-rtdb.firebasedatabase.app";
     return array_values(array_unique($urls));
 }
 
