@@ -124,30 +124,44 @@ function firebase_lookup_uid_by_email($projectId, $token, $email) {
     return null;
 }
 
-function get_db_base_url($dbName) {
+function get_db_base_urls($dbName, $projectId) {
+    $urls = [];
     $fromEnv = getenv('FIREBASE_DB_URL');
     if ($fromEnv) {
-        return rtrim($fromEnv, '/');
+        $urls[] = rtrim($fromEnv, '/');
     }
-    return "https://{$dbName}.firebaseio.com";
+    $urls[] = "https://{$dbName}.firebaseio.com";
+    $urls[] = "https://{$dbName}.firebasedatabase.app";
+    $urls[] = "https://{$projectId}-default-rtdb.firebaseio.com";
+    $urls[] = "https://{$projectId}-default-rtdb.firebasedatabase.app";
+    return array_values(array_unique($urls));
 }
 
-function firebase_db_put($dbName, $path, $token, $payload) {
-    $url = get_db_base_url($dbName) . "/{$path}.json?access_token={$token}";
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_CUSTOMREQUEST => 'PUT',
-        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-        CURLOPT_POSTFIELDS => json_encode($payload),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_MAXREDIRS => 3,
-        CURLOPT_TIMEOUT => 20
-    ]);
-    $resp = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    return $resp !== false && $httpCode >= 200 && $httpCode < 300;
+function firebase_db_put($dbName, $projectId, $path, $token, $payload) {
+    $last = ['ok' => false, 'http_code' => 0, 'url' => '', 'error' => 'unknown', 'body' => ''];
+    $urls = get_db_base_urls($dbName, $projectId);
+    foreach ($urls as $baseUrl) {
+        $url = $baseUrl . "/{$path}.json?access_token={$token}";
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_CUSTOMREQUEST => 'PUT',
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_POSTFIELDS => json_encode($payload),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 3,
+            CURLOPT_TIMEOUT => 20
+        ]);
+        $resp = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+        if ($resp !== false && $httpCode >= 200 && $httpCode < 300) {
+            return ['ok' => true, 'http_code' => $httpCode, 'url' => $url, 'error' => '', 'body' => $resp];
+        }
+        $last = ['ok' => false, 'http_code' => $httpCode, 'url' => $url, 'error' => $err, 'body' => strval($resp)];
+    }
+    return $last;
 }
 
 function firebase_set_temp_password($projectId, $token, $uid, $password) {
@@ -203,9 +217,18 @@ try {
     $code = random_int(100000, 999999);
     
     // Сохраняем код в RTDB с правами сервера
-    $saved = firebase_db_put($dbName, "password_reset/{$uid}", $accessToken, ['code' => $code, 'created_at' => time()]);
-    if (!$saved) {
-        send_error('Не удалось сохранить код в базе.', 'db_write_failed', 500);
+    $saved = firebase_db_put($dbName, $projectId, "password_reset/{$uid}", $accessToken, ['code' => $code, 'created_at' => time()]);
+    if (!$saved['ok']) {
+        send_json([
+            'ok' => false,
+            'success' => false,
+            'message' => 'Не удалось сохранить код в базе.',
+            'error' => 'db_write_failed',
+            'http_code' => $saved['http_code'],
+            'db_url' => $saved['url'],
+            'curl_error' => $saved['error'],
+            'body' => $saved['body']
+        ], 500);
     }
 
     // Делаем код временным паролем (админ-права)
