@@ -146,11 +146,14 @@ function firebase_db_put($dbName, $projectId, $path, $token, $payload) {
     $last = ['ok' => false, 'http_code' => 0, 'url' => '', 'error' => 'unknown', 'body' => ''];
     $urls = get_db_base_urls($dbName, $projectId);
     foreach ($urls as $baseUrl) {
-        $url = $baseUrl . "/{$path}.json?access_token={$token}";
+        $url = $baseUrl . "/{$path}.json";
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_CUSTOMREQUEST => 'PUT',
-            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $token
+            ],
             CURLOPT_POSTFIELDS => json_encode($payload),
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
