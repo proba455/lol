@@ -114,9 +114,12 @@ function firebase_db_get($dbName, $projectId, $path, $token) {
     $last = ['__error' => 'unknown', '__http' => 0, '__url' => '', '__curl_error' => '', '__body' => ''];
     $urls = get_db_base_urls($dbName, $projectId);
     foreach ($urls as $baseUrl) {
-        $url = $baseUrl . "/{$path}.json?access_token={$token}";
+        $url = $baseUrl . "/{$path}.json";
         $ch = curl_init($url);
         curl_setopt_array($ch, [
+            CURLOPT_HTTPHEADER => [
+                'Authorization: Bearer ' . $token
+            ],
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 3,
