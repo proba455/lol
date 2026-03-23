@@ -3,8 +3,8 @@
     "api/*.php": { "runtime": "vercel-php@0.7.4" }
   },
   "routes": [
-    { "src": "/send_password_reset.php", "dest": "/api/send_password_reset.php" },
-    { "src": "/check_password_reset.php", "dest": "/api/check_password_reset.php" },
-    { "src": "/update_password.php", "dest": "/api/update_password.php" }
+    { "src": "/send_password_reset.php", "dest": "./send_password_reset.php" },
+    { "src": "/check_password_reset.php", "dest": "./check_password_reset.php" },
+    { "src": "/update_password.php", "dest": "./update_password.php" }
   ]
 }
