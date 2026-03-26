@@ -6,6 +6,9 @@ use PHPMailer\PHPMailer\SMTP;
 use PHPMailer\PHPMailer\Exception;
 
 header('Content-Type: application/json; charset=utf-8');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
 function send_json($payload, $code = 200) {
     if (!headers_sent()) {
@@ -14,6 +17,14 @@ function send_json($payload, $code = 200) {
     }
     echo json_encode($payload, JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    send_json(['ok' => true], 204);
+}
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    send_json(['ok' => false, 'error' => 'method_not_allowed'], 405);
 }
 
 // Настройки SMTP (ЗАПОЛНИ СВОИМИ ДАННЫМИ)
@@ -38,6 +49,16 @@ try {
     $email = filter_input(INPUT_POST, 'email', FILTER_VALIDATE_EMAIL);
     $uid = isset($_POST['uid']) ? trim($_POST['uid']) : '';
     $id_token = isset($_POST['id_token']) ? trim($_POST['id_token']) : '';
+
+    if (!$email || !$uid || !$id_token) {
+        $raw = file_get_contents('php://input');
+        $json = json_decode($raw, true);
+        if (is_array($json)) {
+            $email = isset($json['email']) ? filter_var($json['email'], FILTER_VALIDATE_EMAIL) : $email;
+            $uid = isset($json['uid']) ? trim((string)$json['uid']) : $uid;
+            $id_token = isset($json['id_token']) ? trim((string)$json['id_token']) : $id_token;
+        }
+    }
 
     if (!$email || !$uid || !$id_token) {
         send_json(['ok' => false, 'error' => 'invalid_params'], 400);
