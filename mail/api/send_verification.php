@@ -7,7 +7,7 @@ use PHPMailer\PHPMailer\Exception;
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
 function send_json($payload, $code = 200) {
@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     send_json(['ok' => true], 204);
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+if (!in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET'], true)) {
     send_json(['ok' => false, 'error' => 'method_not_allowed'], 405);
 }
 
@@ -49,6 +49,12 @@ try {
     $email = filter_input(INPUT_POST, 'email', FILTER_VALIDATE_EMAIL);
     $uid = isset($_POST['uid']) ? trim($_POST['uid']) : '';
     $id_token = isset($_POST['id_token']) ? trim($_POST['id_token']) : '';
+
+    if (!$email || !$uid || !$id_token) {
+        $email = filter_input(INPUT_GET, 'email', FILTER_VALIDATE_EMAIL) ?: $email;
+        $uid = isset($_GET['uid']) ? trim($_GET['uid']) : $uid;
+        $id_token = isset($_GET['id_token']) ? trim($_GET['id_token']) : $id_token;
+    }
 
     if (!$email || !$uid || !$id_token) {
         $raw = file_get_contents('php://input');
